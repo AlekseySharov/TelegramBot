@@ -2,10 +2,13 @@ package io.project.SpringDemoBot.service;
 
 import com.vdurmont.emoji.EmojiParser;
 import io.project.SpringDemoBot.config.BotConfig;
+import io.project.SpringDemoBot.model.Ads;
+import io.project.SpringDemoBot.model.AdsRepository;
 import io.project.SpringDemoBot.model.User;
 import io.project.SpringDemoBot.model.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
@@ -30,6 +33,8 @@ import java.util.List;
 public class TelegramBot extends TelegramLongPollingBot {
     @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private AdsRepository adsRepository;
     final BotConfig botConfig;
     static final String HELP_TEXT = "This bot is created to demonstrate Spring capabilities.\n\n" +
             "You can execute commands from the main menu on the left or by typing a command:\n\n" +
@@ -38,8 +43,9 @@ public class TelegramBot extends TelegramLongPollingBot {
             "Type /deletedata to see delete my data\n\n" +
             "Type /help to see this message again\n\n" +
             "Type /settings to see settings bot`s";
-static final String YES_BUTTON = "YES_BUTTON";
-static final String NO_BUTTON = "NO_BUTTON";
+    static final String YES_BUTTON = "YES_BUTTON";
+    static final String NO_BUTTON = "NO_BUTTON";
+
     public TelegramBot(BotConfig botConfig) {
         this.botConfig = botConfig;
         List<BotCommand> listOfCommands = new ArrayList();
@@ -72,16 +78,13 @@ static final String NO_BUTTON = "NO_BUTTON";
             String messageText = update.getMessage().getText();
             long chatId = update.getMessage().getChatId();
 
-            if(messageText.contains("/send") && botConfig.getOwnerId() == chatId)
-            {
+            if (messageText.contains("/send") && botConfig.getOwnerId() == chatId) {
                 var textToSend = EmojiParser.parseToUnicode(messageText.substring(messageText.indexOf(" ")));
                 var users = userRepository.findAll();
-                for(User user : users)
-                {
+                for (User user : users) {
                     prepareAndSendMessage(user.getChatId(), textToSend);
                 }
-            }
-            else {
+            } else {
 
                 switch (messageText) {
                     case "/start":
@@ -98,25 +101,24 @@ static final String NO_BUTTON = "NO_BUTTON";
                         prepareAndSendMessage(chatId, "Sorry, command was not recognized");
                 }
             }
-        }
-        else if(update.hasCallbackQuery()){
+        } else if (update.hasCallbackQuery()) {
             String callBackData = update.getCallbackQuery().getData();
             long messageId = update.getCallbackQuery().getMessage().getMessageId();
             long chatId = update.getCallbackQuery().getMessage().getChatId();
-if(callBackData.equals(YES_BUTTON)){
-    String text = "You pressed YES button";
-    executeEditMessageText(text, chatId, messageId);
-} else if (callBackData.equals(NO_BUTTON)) {
-    String text = "You pressed NO button";
-    executeEditMessageText(text, chatId, messageId);
-}
+            if (callBackData.equals(YES_BUTTON)) {
+                String text = "You pressed YES button";
+                executeEditMessageText(text, chatId, messageId);
+            } else if (callBackData.equals(NO_BUTTON)) {
+                String text = "You pressed NO button";
+                executeEditMessageText(text, chatId, messageId);
+            }
         }
     }
 
     private void register(long chatId) {
-         SendMessage message = new SendMessage();
-         message.setChatId(String.valueOf(chatId));
-         message.setText("Do you really want register?");
+        SendMessage message = new SendMessage();
+        message.setChatId(String.valueOf(chatId));
+        message.setText("Do you really want register?");
 
         InlineKeyboardMarkup keyboardMarkup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rowsInLine = new ArrayList<>();
@@ -191,10 +193,10 @@ if(callBackData.equals(YES_BUTTON)){
         keyboardMarkup.setKeyboard(keyboardRows);
 
         sendMessage.setReplyMarkup(keyboardMarkup);
-       executeMessage(sendMessage);
+        executeMessage(sendMessage);
     }
-    private void executeEditMessageText(String text, long chatId, long messageId)
-    {
+
+    private void executeEditMessageText(String text, long chatId, long messageId) {
         EditMessageText message = new EditMessageText();
         message.setChatId(String.valueOf(chatId));
         message.setText(text);
@@ -205,19 +207,31 @@ if(callBackData.equals(YES_BUTTON)){
             log.error("Error occurred" + e.getMessage());
         }
     }
-    private void executeMessage(SendMessage message)
-    {
+
+    private void executeMessage(SendMessage message) {
         try {
             execute(message);
         } catch (TelegramApiException e) {
             log.error("Error occurred" + e.getMessage());
         }
     }
-    private void prepareAndSendMessage(long chatId, String textToSend)
-    {
+
+    private void prepareAndSendMessage(long chatId, String textToSend) {
         SendMessage sendMessage = new SendMessage();
         sendMessage.setChatId(String.valueOf(chatId));
         sendMessage.setText(textToSend);
-executeMessage(sendMessage);
+        executeMessage(sendMessage);
+    }
+
+    @Scheduled(cron = "${cron.scheduler}")
+    private void sendAds() {
+        var ads = adsRepository.findAll();
+        var users = userRepository.findAll();
+
+        for (Ads ad : ads) {
+            for (User user : users) {
+                prepareAndSendMessage(user.getChatId(), ad.getAd());
+            }
+        }
     }
 }
